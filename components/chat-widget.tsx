@@ -10,59 +10,300 @@ type WidgetMessage = {
   time: string;
 };
 
-const BOT_RESPONSES: Record<string, string> = {
-  hello:
-    "Hi there! 👋 I'm here to help you navigate the application. What can I help you with today?",
-  help: "I can help you with:\n• Navigating the application\n• Understanding features\n• Troubleshooting issues\n• Finding specific pages or settings\n\nJust ask me anything!",
-  application:
-    "This is the Application Print page — it shows the full details for a rental application including applicant info, preferences, address history, and more. Use the sidebar links on the right to jump between sections.",
-  lease:
-    "You can view and manage lease applications from this page. The Application Print view shows applicant details, preferences, and status. Use the sidebar links to jump between Applicants, Preferences, Address Info, and more.",
-  agent:
-    "Agents are AI-powered assistants that handle tasks like responding to residents, processing applications, and managing communications. They can help automate your leasing workflow.",
-  escalation:
-    "Escalations are conversations that need human attention. When an AI agent can't fully resolve an issue, it escalates to staff for review and action.",
-  status:
-    "Application statuses track where a prospect is in the leasing process:\n• Started — application begun but incomplete\n• Submitted — ready for review\n• Approved — passed screening\n• Denied — did not pass screening\n• Cancelled — withdrawn by applicant or staff",
-  default:
-    "Thanks for your question! I'm still learning, but I can help with navigating the app, understanding features, and finding the right pages. Could you try rephrasing or ask about a specific feature?",
+// ── Knowledge base: scored-match rules ──
+// Each entry has keywords (any-match), phrases (bonus for multi-word hits),
+// and a priority so the best match wins.
+
+type KBEntry = {
+  keywords: string[];
+  phrases?: string[];
+  answer: string;
+  priority?: number;
 };
+
+const KNOWLEDGE_BASE: KBEntry[] = [
+  // ── Greetings ──
+  {
+    keywords: ["hello", "hi", "hey", "howdy", "good morning", "good afternoon"],
+    answer:
+      "Hi there! 👋 Welcome to Sunset Ridge. I can answer questions about your application, our property, floor plans, fees, pet policy, and more. How can I help?",
+  },
+  {
+    keywords: ["help", "what can you"],
+    answer:
+      "I can help with:\n• Your application status & next steps\n• Floor plans, pricing & availability\n• Pet policy & fees\n• Parking & storage\n• Move-in costs & lease terms\n• Community amenities\n• Maintenance requests\n• Office hours & contact info\n\nJust ask away!",
+  },
+
+  // ── This specific application ──
+  {
+    keywords: ["my application", "application status", "where is my application", "check my application", "19419334"],
+    phrases: ["application status", "my application"],
+    answer:
+      "Your application #19419334 is currently in **Started** status, which means it's been created but hasn't been fully submitted yet.\n\nTo complete it you'll need to:\n1. Verify your personal information is correct\n2. Provide income/employment documentation\n3. Authorize the background & credit check\n4. Pay the application fee ($50 per applicant)\n5. Click Submit\n\nWould you like help with any of those steps?",
+    priority: 10,
+  },
+  {
+    keywords: ["theodore", "erickson", "applicant"],
+    answer:
+      "The primary applicant on this application is Theodore Isaac Erickson. His contact info on file:\n• Email: Theoerickson7@gmail.com\n• Phone: (703) 896-2176 (Mobile)\n• DOB: 04/17/2007\n\nIf any of this info is incorrect, it can be updated in the Basic Information section before the application is submitted.",
+    priority: 8,
+  },
+  {
+    keywords: ["submit", "finish", "complete", "next step", "what do i need"],
+    phrases: ["next step", "how do i submit", "what do i need"],
+    answer:
+      "To submit this application, make sure the following are complete:\n\n✅ Personal info (name, DOB, SSN, contact)\n✅ Current & previous address history\n✅ Employment & income verification\n✅ Vehicle information (if applicable)\n✅ Emergency contacts\n✅ Answer the General Questions section\n✅ Review & sign the Policy Documents\n✅ Pay the $50 application fee\n\nOnce everything's filled in, the Submit button will become active at the bottom of the page.",
+    priority: 9,
+  },
+
+  // ── Property: Meridian on College Avenue / Sunset Ridge ──
+  {
+    keywords: ["property", "meridian", "college avenue", "community", "sunset ridge", "about"],
+    phrases: ["about the property", "tell me about"],
+    answer:
+      "Meridian on College Avenue (managed by Sunset Ridge) is a modern apartment community offering studio, 1-bed, 2-bed, and 3-bed floor plans. Highlights include:\n\n🏊 Resort-style pool & hot tub\n💪 24-hour fitness center\n🐕 Dog park & pet spa\n📦 Package lockers\n👔 Business center & co-working lounge\n🚗 Covered & garage parking available\n\nWe're located just minutes from downtown with easy access to I-25 and public transit.",
+  },
+
+  // ── Floor plans & pricing ──
+  {
+    keywords: ["floor plan", "unit", "layout", "bedroom", "bed", "2 bed", "triple", "square feet", "sqft"],
+    phrases: ["floor plan", "2 bed"],
+    answer:
+      "This application is for the **2 Bed - A - Triple** floor plan. Here's a quick overview of our 2-bedroom options:\n\n• 2 Bed A (Triple) — 1,050 sq ft — from $1,850/mo\n• 2 Bed B — 980 sq ft — from $1,750/mo\n• 2 Bed C (Corner) — 1,120 sq ft — from $1,950/mo\n\nAll 2-beds include in-unit washer/dryer, quartz countertops, and a balcony or patio. Would you like to see other floor plan options?",
+    priority: 7,
+  },
+  {
+    keywords: ["studio"],
+    answer:
+      "Our studio floor plans range from 450–525 sq ft, starting at $1,200/mo. They feature an open-concept layout with full kitchen, in-unit washer/dryer, and large windows. Great for singles or couples looking for an efficient space!",
+  },
+  {
+    keywords: ["1 bed", "one bed", "1 bedroom", "one bedroom"],
+    answer:
+      "Our 1-bedroom floor plans range from 680–750 sq ft, starting at $1,450/mo. Options include:\n\n• 1 Bed A — 680 sq ft — from $1,450/mo\n• 1 Bed B (Den) — 750 sq ft — from $1,550/mo\n\nBoth include in-unit W/D, walk-in closet, and balcony.",
+  },
+  {
+    keywords: ["3 bed", "three bed", "3 bedroom", "three bedroom"],
+    answer:
+      "Our 3-bedroom floor plans are 1,300–1,450 sq ft, starting at $2,350/mo. They include 2 full bathrooms, in-unit W/D, walk-in closets in every bedroom, and a large open living area. Perfect for families or roommates!",
+  },
+  {
+    keywords: ["price", "pricing", "cost", "how much", "rent", "monthly"],
+    phrases: ["how much", "what does it cost"],
+    answer:
+      "Here's our current pricing overview:\n\n• Studio — from $1,200/mo\n• 1 Bed — from $1,450/mo\n• 2 Bed — from $1,750/mo\n• 3 Bed — from $2,350/mo\n\nThe applied rent on this application is currently showing $0.00, which means pricing hasn't been locked in yet. Final rent will be confirmed once the application is approved and a lease is generated.\n\nRent can vary by floor, view, and move-in date.",
+    priority: 6,
+  },
+
+  // ── Move-in ──
+  {
+    keywords: ["move in", "move-in", "movein", "when can i move", "target date"],
+    phrases: ["move-in date", "move in date", "when can i move"],
+    answer:
+      "The requested move-in date on this application is **11/17/2026**.\n\nTypical move-in costs include:\n• First month's rent\n• Security deposit (usually equal to one month's rent)\n• Application fee ($50, non-refundable)\n• Admin fee ($150, one-time)\n• Pet deposit ($300 per pet, if applicable)\n\nThe exact move-in cost sheet will be provided once the application is approved.",
+    priority: 7,
+  },
+
+  // ── Lease terms ──
+  {
+    keywords: ["lease", "term", "length", "duration", "month to month", "renew"],
+    phrases: ["lease term", "lease length", "month to month"],
+    answer:
+      "We offer flexible lease terms:\n\n• 12-month lease — best rate\n• 9-month lease — slight premium\n• 6-month lease — short-term premium\n• Month-to-month — available after initial lease, +$200/mo premium\n\nThis application doesn't have a lease length specified yet. The leasing team will discuss options once the application is approved.",
+  },
+
+  // ── Application fee & screening ──
+  {
+    keywords: ["fee", "application fee", "screening", "background", "credit check", "credit score"],
+    phrases: ["application fee", "credit check", "background check"],
+    answer:
+      "The application fee is **$50 per applicant** (non-refundable). This covers:\n\n• Credit check\n• Criminal background screening\n• Eviction history search\n• Employment/income verification\n\nWe look at the full picture — there's no hard credit score cutoff. Generally, we look for:\n• No recent evictions\n• Verifiable income of 2.5x the monthly rent\n• No serious criminal history\n\nResults typically come back within 24–48 hours.",
+    priority: 6,
+  },
+
+  // ── Income requirements ──
+  {
+    keywords: ["income", "salary", "employment", "pay stub", "how much do i need to make", "qualify"],
+    phrases: ["income requirement", "how much do i need"],
+    answer:
+      "To qualify, the combined household income should be at least **2.5x the monthly rent**. For example:\n\n• $1,750/mo rent → $4,375/mo gross income\n• $1,850/mo rent → $4,625/mo gross income\n\nAcceptable income documentation includes:\n• 2 most recent pay stubs\n• Employment offer letter\n• Tax returns (self-employed)\n• Bank statements (3 months)\n• Social Security/disability award letter\n\nThis application currently shows $0.00 income — that will need to be updated before submission.",
+    priority: 7,
+  },
+
+  // ── Pets ──
+  {
+    keywords: ["pet", "dog", "cat", "animal", "pet policy", "breed"],
+    phrases: ["pet policy", "pet fee", "breed restriction"],
+    answer:
+      "Great news — Sunset Ridge is pet-friendly! 🐾\n\n• Up to 2 pets per apartment\n• Dogs & cats welcome\n• $300 refundable pet deposit per pet\n• $35/mo pet rent per pet\n• Weight limit: 75 lbs per dog\n\n**Breed restrictions:** Pit Bulls, Rottweilers, Dobermans, German Shepherds, Chow Chows, Akitas, and wolf hybrids are not permitted.\n\nService animals and emotional support animals are exempt from pet fees — just provide documentation from your provider.",
+  },
+
+  // ── Parking ──
+  {
+    keywords: ["parking", "garage", "car", "vehicle"],
+    answer:
+      "Parking options at Sunset Ridge:\n\n• Open lot — 1 free space per unit, additional at $50/mo\n• Covered — $75/mo\n• Garage (attached) — $125/mo\n• EV charging stations available (first come, first served)\n\nGuest parking is available on a first-come, first-served basis near the leasing office. You'll be able to add parking preferences during lease signing.",
+  },
+
+  // ── Utilities ──
+  {
+    keywords: ["utilities", "electric", "water", "gas", "internet", "wifi", "trash"],
+    phrases: ["what's included", "what is included"],
+    answer:
+      "Here's how utilities work at Sunset Ridge:\n\n**Included in rent:**\n• Trash & recycling\n• Sewer\n• Common area WiFi (pool, lounge, business center)\n\n**Resident responsibility:**\n• Electric (avg. $60–90/mo for a 2-bed)\n• Gas (heating, avg. $30–50/mo)\n• Water (billed via RUBS, avg. $40–60/mo)\n• Internet/Cable — Xfinity & Google Fiber available\n\nAll units are individually metered for electric & gas.",
+  },
+
+  // ── Amenities ──
+  {
+    keywords: ["amenities", "pool", "gym", "fitness", "clubhouse", "lounge"],
+    answer:
+      "Sunset Ridge community amenities include:\n\n🏊 Resort-style pool with sun deck & cabanas\n♨️ Year-round hot tub\n💪 24-hour fitness center with Pelotons & free weights\n🐕 Off-leash dog park with agility equipment\n🐾 Pet spa & grooming station\n📦 24/7 package lockers (Amazon Hub)\n👔 Business center with private offices & conference room\n🎮 Resident lounge with gaming & coffee bar\n🔥 Outdoor grilling stations & fire pits\n🚲 Bike storage & repair station\n\nAll amenities are included with your lease — no extra fees!",
+  },
+
+  // ── Maintenance ──
+  {
+    keywords: ["maintenance", "repair", "fix", "broken", "work order"],
+    phrases: ["maintenance request", "work order", "something is broken"],
+    answer:
+      "For maintenance requests:\n\n• **Emergency** (flood, fire, no heat, lock-out): Call (814) 636-8512 — 24/7 on-call maintenance\n• **Standard requests**: Submit through the Resident Portal or call the office during business hours\n• Typical response time: within 24–48 hours for non-emergencies\n\nSince your application is still in progress, maintenance services will be available once you've moved in and have Resident Portal access.",
+  },
+
+  // ── Office & contact ──
+  {
+    keywords: ["office", "hours", "contact", "phone", "email", "leasing", "tour", "visit"],
+    phrases: ["office hours", "schedule a tour"],
+    answer:
+      "Sunset Ridge Leasing Office:\n\n📍 Meridian on College Avenue\n📞 (814) 636-8512\n📧 leasing@sunsetridge.com\n\n**Office Hours:**\n• Mon–Fri: 9:00 AM – 6:00 PM\n• Saturday: 10:00 AM – 5:00 PM\n• Sunday: 12:00 PM – 5:00 PM\n\nWe'd love to show you around! Self-guided tours are available anytime during office hours, or you can schedule a private tour with a leasing consultant.",
+  },
+
+  // ── Roommates / co-applicants ──
+  {
+    keywords: ["roommate", "co-applicant", "coapplicant", "add someone", "guarantor", "cosigner"],
+    phrases: ["add a roommate", "co-applicant", "guarantor"],
+    answer:
+      "To add a co-applicant or roommate:\n\n1. Each person over 18 must submit their own application\n2. Each pays the $50 application fee\n3. All applicants are screened individually\n4. All approved adults are named on the lease\n\n**Guarantors/Cosigners:** If an applicant doesn't meet the income requirement on their own, a guarantor can be added. The guarantor must earn 5x the monthly rent and submit a separate application.\n\nCurrently this application lists Theodore Erickson as the sole Primary applicant.",
+  },
+
+  // ── SSN & privacy ──
+  {
+    keywords: ["ssn", "social security", "privacy", "secure", "data", "safe"],
+    phrases: ["is my data safe", "social security"],
+    answer:
+      "Your information is securely handled:\n\n🔒 SSNs are encrypted and masked (yours shows as *****2434)\n🔒 All data transmitted via 256-bit SSL encryption\n🔒 We never share personal info with third parties beyond screening providers\n🔒 Background checks are conducted by TransUnion, a trusted FCRA-compliant agency\n\nOnly authorized leasing staff can access your full application details.",
+  },
+
+  // ── Building & unit assignment ──
+  {
+    keywords: ["building", "which building", "unit number", "assigned"],
+    answer:
+      "Your application doesn't have a specific building or unit assigned yet — that's normal at the \"Started\" stage. A unit is typically assigned after:\n\n1. Application is submitted & approved\n2. You select your preferred available unit\n3. A lease is generated with the specific unit number\n\nYou've indicated the 2 Bed - A - Triple floor plan. Once approved, the leasing team will show you which specific units in that layout are available for your 11/17/2026 move-in date.",
+  },
+
+  // ── How did you hear about us ──
+  {
+    keywords: ["property website", "how did you hear", "referral", "found"],
+    answer:
+      "This application indicates the applicant found us through the **Property Website**. If that's not correct, it can be updated in the Applicant Preferences section. We also accept referrals — if a current resident referred you, let us know! Referrers may be eligible for a rent credit.",
+  },
+
+  // ── Address history ──
+  {
+    keywords: ["address", "previous address", "rental history", "lived", "residence"],
+    phrases: ["address history", "previous address", "rental history"],
+    answer:
+      "The Address Information section tracks your current and permanent addresses. For a complete application, we typically need:\n\n• Current address with dates\n• At least 2 years of address history\n• Landlord/manager name and phone for rental references\n• Reason for leaving each prior residence\n• Monthly payment amount\n\nThis application's address fields are currently incomplete — make sure to fill in both Current Address and Permanent Address before submitting.",
+  },
+
+  // ── Vehicle info ──
+  {
+    keywords: ["vehicle", "car info", "license plate", "registration"],
+    answer:
+      "The Vehicle Information section is used for parking management and registration. You'll want to provide:\n\n• Year, make, model, and color\n• License plate number and state\n• Number of vehicles\n\nThis is optional but recommended — it helps us assign parking and identify your vehicles on property. You can update vehicle info anytime after move-in through the Resident Portal.",
+  },
+
+  // ── Contacts / emergency ──
+  {
+    keywords: ["emergency contact", "contact info", "references"],
+    answer:
+      "The Contacts section is for emergency contacts and personal references. We recommend providing:\n\n• At least 1 emergency contact (name, phone, relationship)\n• Emergency contacts should be someone NOT living with you\n\nThis is important for safety — if there's ever an emergency and we can't reach you, we'll contact the person listed here.",
+  },
+
+  // ── General questions section ──
+  {
+    keywords: ["general question", "questionnaire", "additional question"],
+    answer:
+      "The General Questions section includes standard screening questions such as:\n\n• Have you ever been evicted?\n• Have you ever been convicted of a felony?\n• Have you ever broken a lease?\n• Do you have pets?\n• Do you smoke?\n\nAnswer honestly — providing false information can result in application denial or lease termination. These questions help us process your application fairly and in compliance with fair housing laws.",
+  },
+
+  // ── Policy documents ──
+  {
+    keywords: ["policy", "documents", "sign", "signature", "terms", "agreement"],
+    phrases: ["policy documents"],
+    answer:
+      "Before submitting, you'll need to review and sign several policy documents:\n\n📄 Application Terms & Conditions\n📄 Fair Housing Disclosure\n📄 Privacy Policy & Data Consent\n📄 Background Check Authorization\n📄 Community Rules & Regulations acknowledgment\n\nThese are available in the Policy Documents section (last item in the sidebar). Electronic signatures are accepted — just click to sign each document.",
+  },
+
+  // ── Timeline / how long ──
+  {
+    keywords: ["how long", "timeline", "when will i hear", "turnaround", "wait"],
+    phrases: ["how long does it take", "when will i hear back"],
+    answer:
+      "Here's the typical application timeline:\n\n📋 Submit application — same day\n🔍 Screening & background check — 24–48 hours\n✅ Approval notification — within 48 hours of submission\n📝 Lease signing — within 3 days of approval\n🔑 Move-in — on your requested date (11/17/2026)\n\nYou'll receive email and text updates at each step. If additional documentation is needed, the leasing team will reach out to Theoerickson7@gmail.com or (703) 896-2176.",
+    priority: 6,
+  },
+
+  // ── Denial / rejected ──
+  {
+    keywords: ["denied", "rejected", "not approved", "appeal", "adverse"],
+    phrases: ["what if i'm denied", "what happens if"],
+    answer:
+      "If an application is denied, you'll receive:\n\n• A written adverse action notice (required by law)\n• The specific reason(s) for denial\n• Contact info for the screening agency to dispute errors\n\nCommon denial reasons include insufficient income, poor credit/eviction history, or incomplete information. If denied, the application fee is non-refundable, but you may:\n\n• Provide additional documentation\n• Add a qualified guarantor/cosigner\n• Appeal within 14 days with new information",
+  },
+
+  // ── Catch-all ──
+  {
+    keywords: [],
+    answer:
+      "I appreciate the question! I'm best at answering questions about:\n\n• This application & its status\n• Sunset Ridge property info & amenities\n• Floor plans, pricing & availability\n• Move-in costs, fees & lease terms\n• Pet, parking & utility policies\n• Application requirements & next steps\n\nCould you rephrase, or would you like me to connect you with our leasing office at (814) 636-8512?",
+  },
+];
 
 function getBotReply(input: string): string {
   const lower = input.toLowerCase();
-  if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey"))
-    return BOT_RESPONSES.hello;
-  if (lower.includes("help") || lower.includes("what can"))
-    return BOT_RESPONSES.help;
-  if (
-    lower.includes("application") ||
-    lower.includes("app") ||
-    lower.includes("page")
-  )
-    return BOT_RESPONSES.application;
-  if (
-    lower.includes("lease") ||
-    lower.includes("applicant") ||
-    lower.includes("apply") ||
-    lower.includes("rent")
-  )
-    return BOT_RESPONSES.lease;
-  if (lower.includes("agent") || lower.includes("ai") || lower.includes("bot"))
-    return BOT_RESPONSES.agent;
-  if (
-    lower.includes("escalat") ||
-    lower.includes("issue") ||
-    lower.includes("problem")
-  )
-    return BOT_RESPONSES.escalation;
-  if (
-    lower.includes("status") ||
-    lower.includes("started") ||
-    lower.includes("approved") ||
-    lower.includes("denied")
-  )
-    return BOT_RESPONSES.status;
-  return BOT_RESPONSES.default;
+
+  let bestScore = 0;
+  let bestAnswer = KNOWLEDGE_BASE[KNOWLEDGE_BASE.length - 1].answer;
+
+  for (const entry of KNOWLEDGE_BASE) {
+    if (entry.keywords.length === 0) continue;
+
+    let score = 0;
+
+    for (const kw of entry.keywords) {
+      if (lower.includes(kw)) {
+        score += kw.split(" ").length;
+      }
+    }
+
+    if (entry.phrases) {
+      for (const phrase of entry.phrases) {
+        if (lower.includes(phrase)) {
+          score += phrase.split(" ").length * 2;
+        }
+      }
+    }
+
+    if (score > 0 && entry.priority) {
+      score += entry.priority;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestAnswer = entry.answer;
+    }
+  }
+
+  return bestAnswer;
 }
 
 function formatTime(): string {
